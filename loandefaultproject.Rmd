@@ -1,0 +1,455 @@
+---
+title: "Loan Default Project"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+
+**Author**: Urooj Syeda
+
+
+
+```{r warning = FALSE, message = FALSE}
+# Suppress dplyr summarise grouping warning messages
+options(dplyr.summarise.inform = FALSE)
+
+## Add R libraries here
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+library(ggplot2)
+library(tidymodels)
+library(skimr)
+library(vip)
+
+# Load data
+loans_df <- readRDS("C:/Users/urooj/Downloads/loan_data.rds")
+
+```
+
+# Data Analysis 
+
+This data set contains information on over 4,000 individuals who secured a personal loan in 2017 from a national bank. The bank has experienced record levels of customers defaulting on their loans in the past couple of years and this is leading to large financial losses.
+The objective of this project is to explore the factors that lead to loan default and develop a machine learning algorithm that will predict the likelihood of an applicant defaulting on their loan in the future.
+For this project, I thought of 6 relevant questions that would allow me to explore the relationship between loan_default and the other variables in the loan_df fata set. The goal of my analysis is to discover which variables drive the differences between customers who do and do not default on their loans. 
+
+### Summary Table
+
+```{r echo = TRUE, fig.height=5, fig.width=9}
+loans_df %>%
+  group_by(loan_purpose) %>% 
+  summarise(n_customers = n(),
+            customers_default = sum(loan_default == 'yes'),
+            default_percent = 100 * mean(loan_default == 'yes'))
+```
+
+
+### Data Visulatization
+
+```{r echo = TRUE, fig.height=5, fig.width=9}
+default_rates <- loans_df %>%
+                 group_by(loan_purpose) %>% 
+                 summarise(n_customers = n(),
+                 customers_default = sum(loan_default == 'yes'),
+                 default_percent = 100 * mean(loan_default == 'yes'))
+
+
+ggplot(data = default_rates, mapping = aes(x = loan_purpose, y = default_percent)) +
+    geom_bar(stat = 'identity', fill = '#006EA1', color = 'white') +
+    labs(title = 'Loan Default Rate by Purpose of Loan',
+         x = 'Loan Purpose',
+         y = 'Default Percentage') +
+    theme_light()
+```
+
+
+
+
+
+## Question 1
+
+
+**Question**: Do higher interest rates contribute to a higher number of customers defaulting on their loans? 
+
+
+**Answer**: Yes. As we can clearly identify from the following data analysis, we can see that the customers with the higher interest rates are the ones who are most likely to default their loans, with the group of customers with the highest interest rates all fall into the 'yes' defaulted distribution. We can also see that the distributions differ in that all of the customers who did not default on their loans had lower interest rates overall and the ones who did had overall higher interest rates. We can also see from our summary table that 93% of customers within the highest interest rate group were likely to default. This is a huge difference compared to the customers with the lowers amounts, who have a 0% default percent of all customers within that group.It is reasonable to assume that customers will most likely default on their loans if their interest rates are high. 
+
+
+```{r}
+
+#creating a summary statistics table and binning interest rates
+
+interest_rate_summary <- loans_df %>%
+  mutate(interest_rate_bin = cut(interest_rate,
+                                 breaks = quantile(interest_rate, probs = seq(0,1,0.25), na.rm = TRUE), include.lowest = TRUE)) %>%
+
+group_by(interest_rate_bin) %>%
+  summarise(n_customers = n(),
+            customers_default = sum(loan_default == 'yes'),
+            default_percent = 100 * mean(loan_default == 'yes')) 
+
+interest_rate_summary
+```
+```{r}
+
+#creating the plot 
+
+ggplot(loans_df, aes(x = interest_rate, fill = loan_default)) +
+  geom_histogram(position = "identity", alpha = 0.6, binwidth = 1, color = "white") +
+  labs(title = "Distribution of Interest Rates by Loan Default Status",
+       x = "Interest Rate",
+       y = "Count") +
+  scale_fill_manual(values = c("yes" = "blue", "no" = "orange")) +
+  theme_light()
+
+
+```
+## Question 2
+
+
+**Question**: Is there a relationship between the borrower's homeownership status and if the borrower defaulted on their loan? 
+
+
+**Answer**: According to the data visualizations, it is clear to see that there is not that much of a difference on loan default based on homeownership status of the borrower. However, we can see that borrowers who rent their homes are the most likely to default on their loans, and the borrowers who own or pay mortgage are less likely to. 
+
+
+```{r}
+
+#creating the summary statistics table 
+
+homeownership_summary <- loans_df %>%
+  group_by(homeownership) %>%
+  summarise(n_customers = n(),
+            customers_default = sum(loan_default == 'yes'),
+            default_percent = 100 * mean(loan_default == 'yes'))
+
+
+homeownership_summary
+
+```
+```{r}
+#creating a bar graph to visualize the data 
+
+ggplot(data = homeownership_summary, aes(x = homeownership, y = default_percent)) +
+  geom_bar(stat = 'identity', fill = 'darkblue', color = 'white') +
+  labs(title = 'Loan Default Rate by Homeownership',
+       x = 'Homeownership Status',
+       y = 'Default Percentage') +
+  theme_light()
+
+
+
+```
+## Question 3
+
+
+**Question**: Does the debt-to-income ratio of borrowers at application time have any relationship to whether or not the borrower defaulted on their loan? 
+
+
+**Answer**: Based on our data visualization and summary statistics, we can see that those with a larger debt-to-income ratio are more likely to default on their loans compared to those with a lower debt-to-income ratio. However, there are clear exceptions; as we can see from our data visualization; that there is a outlier with a very high debt-to-income ratio that has not defaulted on their loans. However, overall, we can say that mean debt-to-income ratio is higher of those who defaulted than those who did not.
+
+
+```{r}
+#creating a summary table 
+loans_df %>%
+  group_by(loan_default) %>%
+  summarise(mean_dti = mean(debt_to_income, na.rm = TRUE),
+            median_dti = median(debt_to_income, na.rm = TRUE),
+            sd_dti = sd(debt_to_income, na.rm = TRUE),
+            count = n())
+
+```
+
+```{r}
+
+#creating a violin plot for the data 
+
+ggplot(loans_df, aes(x = loan_default, y = debt_to_income, fill = loan_default)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  labs(title = "Distribution of Debt-to-Income Ratio by Loan Default",
+       x = "Loan Default",
+       y = "Debt-to-Income Ratio") +
+  scale_fill_manual(values = c("yes" = "green", "no" = "red")) +
+  theme_light()
+```
+
+
+
+
+## Question 4
+
+
+**Question**: Are there differences in loan default rates by loan amount? 
+
+
+**Answer**: Yes, there are differences as we can note from the summary table and the data visualization. We can see overall that the distribution of borrowers who did default on their loans were distributed higher among the loan amounts. And those that did not default on their loans were distributed lower on borrowed amount. We can also see that those who defaulted on their loans had a higher median and higher overall statistics among the five number summary as compared to those who did not. This could suggest that customers who borrow a higher amount are more likely to default on their loans than those who did not. 
+
+
+```{r}
+
+loans_df %>%
+  group_by(loan_default) %>%
+  summarise(mean_loan_amount = mean(loan_amount, na.rm = TRUE),
+            median_loan_amount = median(loan_amount, na.rm = TRUE),
+            sd_loan_amount = sd(loan_amount, na.rm = TRUE),
+            count = n())
+
+
+```
+```{r}
+
+ggplot(loans_df, aes(x = loan_default, y = loan_amount, fill = loan_default)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Loan Amount by Loan Default",
+       x = "Loan Default",
+       y = "Loan Amount") +
+  scale_fill_manual(values = c("yes" = "pink", "no" = "lightblue")) +
+  theme_light()
+
+```
+## Question 5
+
+
+**Question**: Is there a relationship between missed payments from the last two years and defaulting? 
+
+
+**Answer**:We can see that of customers who missed their payments in the last two years, about 45% of them defaulted on their loans. Constrastingly, of the customers who did not miss their payments in the last two years, about 36% defaulted on their loans.This suggests a relationship between the two variables, that customers who have missed their payments in the last two years are more likely to default on their loans.  
+
+
+```{r}
+
+#creating a summary table 
+
+missed_payment_summary <- loans_df %>%
+  group_by(missed_payment_2_yr) %>%
+  summarise(n_customers = n(),
+            customers_default = sum(loan_default == 'yes'),
+            default_percent = 100 * mean(loan_default == 'yes'))
+
+missed_payment_summary
+
+
+```
+```{r}
+#creating a stacked bar plot 
+
+ggplot(loans_df, aes(x = missed_payment_2_yr, fill = loan_default)) +
+  geom_bar(position = "fill", color = "white") +
+  labs(title = "Proportion of Defaults by Missed Payments (2 Years)",
+       x = "Missed Payments in Last 2 Years",
+       y = "Proportion",
+       fill = "Loan Default") +
+  scale_fill_manual(values = c("yes" = "purple", "no" = "gray")) +
+  scale_y_continuous(labels = scales::percent) +
+  theme_light()
+
+```
+## Question 6
+
+
+**Question**: Are there differences in loan default rates by term length? 
+
+
+**Answer**: As evidenced by the following data analysis, there does seem to be a significant difference in loan default rates among term lenghts. We can see that much higher percentage of customers defaulted on five-year loans rather than customers who had three-year loans. This means that customers who took out loans for a longer term and more likely to default on their loans. 
+
+
+```{r}
+
+#creating a summary table 
+
+term_summary <- loans_df %>%
+  group_by(term) %>%
+  summarise(n_customers = n(),
+            customers_default = sum(loan_default == 'yes'),
+            default_percent = 100 * mean(loan_default == 'yes'))
+
+term_summary
+
+
+```
+
+```{r}
+#creating a bar plot 
+
+ggplot(term_summary, aes(x = term, y = default_percent)) +
+  geom_bar(stat = "identity", fill = "#006EA1", color = "white") +
+  labs(title = "Loan Default Rate by Term Length",
+       x = "Term Length",
+       y = "Default Percentage") +
+  theme_light()
+
+
+```
+# Predictive Modeling 
+
+
+## Model 1
+
+```{r}
+#first, i split up the data into training and test sets. 
+set.seed(123)
+loan_split <- initial_split(loans_df, prop = 0.8, strata = loan_default)
+loan_train <- training(loan_split)
+loan_test <- testing(loan_split)
+
+#then, I create a recipe 
+loan_recipe <- recipe(loan_default ~ ., data = loan_train) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_other(all_nominal_predictors(), threshold = 0.01) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+#cross-validation for tuning 
+
+set.seed(123)
+loan_folds <- vfold_cv(loan_train, v = 5, strata = loan_default)
+
+#Model 1 - Logistic Regression Model 
+
+log_reg_model <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+log_reg_workflow <- workflow() %>%
+  add_model(log_reg_model) %>%
+  add_recipe(loan_recipe)
+
+log_reg_fit <- fit(log_reg_workflow, data = loan_train)
+
+log_reg_model
+
+```
+
+
+
+## Model 2
+
+```{r}
+
+#Model 2: Random Forest Model
+
+
+tree_model <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune()
+) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+#creating the workflow 
+
+tree_workflow <- workflow() %>%
+  add_model(tree_model) %>%
+  add_recipe(loan_recipe)
+
+set.seed(123)
+tree_grid <- grid_random(
+  parameters(tree_model),
+  size = 10
+)
+
+tree_tuned <- tune_grid(
+  tree_workflow,
+  resamples = loan_folds,
+  grid = tree_grid,
+  metrics = metric_set(roc_auc)
+)
+
+
+
+```
+
+## Model 3
+
+```{r}
+
+#Model 3: Decision Tree (with turnin)
+#split the data 
+set.seed(123)
+data_split <- initial_split(loans_df, prop = 0.8, strata = loan_default)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+#create recipe
+loan_recipe <- recipe(loan_default ~ ., data = train_data) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors(), -all_outcomes())
+
+
+#first step is to make the decision tree model with the tune functions 
+tree_model <- decision_tree(
+  cost_complexity = tune(),   # pruning parameter
+  tree_depth = tune(),        # max depth of the tree
+  min_n = tune()              # min observations per node
+) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+#creating the workflow 
+
+tree_workflow <- workflow() %>%
+  add_model(tree_model) %>%
+  add_recipe(loan_recipe)
+
+#setting up crossvalidation
+
+set.seed(123)
+loan_folds <- vfold_cv(train_data, v = 5, strata = loan_default)
+
+#Extract tunable parameters 
+
+tree_params <- hardhat::extract_parameter_set_dials(tree_model)
+
+set.seed(123)
+tree_grid <- grid_random(tree_params, size = 10)
+
+#tuning model 
+
+set.seed(123)
+tree_tune <- tune_grid(
+  tree_workflow,
+  resamples = loan_folds,
+  grid = tree_grid,
+  metrics = metric_set(roc_auc)
+)
+
+#Select the best model 
+
+tree_best <- select_best(tree_tune, metric = "roc_auc")
+
+
+#finalize workflow 
+
+tree_final <- finalize_workflow(tree_workflow, tree_best)
+
+#fitting the full model to the training data 
+
+tree_fit <- fit(tree_final, data = train_data)
+
+#Evaluate the model on the test set 
+
+tree_predictions <- predict(tree_fit, test_data, type = "prob") %>%
+  bind_cols(predict(tree_fit, test_data)) %>%
+  bind_cols(test_data %>% select(loan_default))
+
+#Plotting the ROC curve 
+library(yardstick)
+
+tree_roc <- roc_curve(tree_predictions, truth = loan_default, .pred_yes)
+autoplot(tree_roc)
+
+
+```
+
+```{r}
+#Get the area under curve 
+
+roc_auc(tree_predictions, truth = loan_default, .pred_yes)
+
+```
+
+
+--- End of the Project ---
